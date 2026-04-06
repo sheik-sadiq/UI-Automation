@@ -1,4 +1,4 @@
-# UI-Automation — GrowthCreators.ai
+# UI-Automation
 
 ![Playwright Tests](https://github.com/sheik-sadiq/UI-Automation/actions/workflows/playwright.yml/badge.svg)
 
