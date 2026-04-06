@@ -1,8 +1,6 @@
 # UI-Automation — GrowthCreators.ai
 
-![Playwright Tests](https://github.com/<your-username>/UI-Automation/actions/workflows/playwright.yml/badge.svg)
-
-> **Before publishing:** replace `<your-username>` in the badge URL above with your GitHub username.
+![Playwright Tests](https://github.com/sheik-sadiq/UI-Automation/actions/workflows/playwright.yml/badge.svg)
 
 End-to-end UI test suite for [https://www.growthcreators.ai](https://www.growthcreators.ai) built with **Python**, **Playwright**, and **pytest**. Tests are structured using the **Page Object Model (POM)** pattern for maintainability and scalability.
 
