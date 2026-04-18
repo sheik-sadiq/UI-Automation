@@ -1,22 +1,17 @@
 """
 llm_client.py
 =============
-Wraps the Google Gemini API using the current `google-genai` SDK
-(package: google-genai, import: google.genai).
+Wraps local Ollama API for self-healing.
 
 The HEAL_SYSTEM_PROMPT encodes the locator-fix rules from
-.github/skills/auto-heal.md so Gemini knows exactly what to produce:
+.github/skills/auto-heal.md so Gemma knows exactly what to produce:
 a valid unified diff targeting only pages/, using Playwright's preferred
 locator hierarchy.
 
 Returns a unified diff string ready to pipe into `patch -p1`, or an empty
-string if Gemini signals it cannot fix the failure.
+string if the model signals it cannot fix the failure.
 """
-import os
-import time
-
-from google import genai
-from google.genai import types
+import requests
 
 # ── System instruction (distilled from .github/skills/auto-heal.md) ──────────
 HEAL_SYSTEM_PROMPT = """
@@ -49,22 +44,20 @@ def ask_llm(
     dom_snapshot: str,
 ) -> str:
     """
-    Call Gemini 2.0 Flash with test failure context and live DOM snapshot.
+    Call local Ollama (gemma3:4b) with test context and live DOM snapshot.
 
     Parameters
     ----------
     test_name   : Name of the pytest function that failed.
     traceback   : Full error traceback from pytest-json-report.
     page_source : Current source of the responsible pages/*.py file.
-    dom_snapshot: ARIA accessibility tree (YAML string) from page.aria_snapshot().
+    dom_snapshot: Extracted JSON of interactive elements from page.evaluate().
 
     Returns
     -------
     A unified diff string suitable for ``patch -p1``, or empty string
     on failure / low confidence.
     """
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-
     user_message = f"""## Failing Test
 `{test_name}`
 
@@ -87,41 +80,38 @@ Produce a unified diff that fixes the broken locator.
 Remember: output ONLY the raw diff, no markdown fences, no explanation.
 """
 
-    MAX_RETRIES = 3
-    BACKOFF     = [2, 4, 8]   # seconds between retries
+    payload = {
+        "model": "gemma3:4b",
+        "system": HEAL_SYSTEM_PROMPT,
+        "prompt": user_message,
+        "stream": False,
+        "options": {
+            "temperature": 0.1,  # low temp -> deterministic
+            "num_predict": 1000,
+        }
+    }
 
-    for attempt in range(MAX_RETRIES):
-        try:
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=user_message,
-                config=types.GenerateContentConfig(
-                    system_instruction=HEAL_SYSTEM_PROMPT,
-                    temperature=0.1,
-                    max_output_tokens=1000,
-                ),
-            )
-            break   # success — exit retry loop
-        except Exception as exc:
-            err = str(exc)
-            if "429" in err or "quota" in err.lower() or "rate" in err.lower():
-                if attempt < MAX_RETRIES - 1:
-                    wait = BACKOFF[attempt]
-                    print(f"[LLM] 429 rate-limit hit — retrying in {wait}s (attempt {attempt + 1}/{MAX_RETRIES})")
-                    time.sleep(wait)
-                    continue
-            # Non-retriable error or exhausted retries
-            print(f"[LLM] API error for {test_name}: {exc}")
-            return ""
-
-    content = response.text.strip()
+    try:
+        print(f"[LLM] Dispatching request to local Ollama (gemma3:4b) for {test_name}...")
+        resp = requests.post("http://localhost:11434/api/generate", json=payload, timeout=120)
+        resp.raise_for_status()
+        content = resp.json().get("response", "").strip()
+    except Exception as exc:
+        print(f"[LLM] Local Ollama API error for {test_name}: {exc}")
+        return ""
 
     # Safety checks: reject if model signals uncertainty or output is malformed
     if "CANNOT_FIX" in content:
-        print(f"[LLM] Gemini signalled CANNOT_FIX for {test_name}")
+        print(f"[LLM] Model signalled CANNOT_FIX for {test_name}")
         return ""
     if not content.startswith("---"):
-        print(f"[LLM] Unexpected response format for {test_name}:\n{content[:300]}")
-        return ""
+        # Sometimes small models still add markdown fences despite instructions.
+        # Fallback strip if it wrapped in ```diff ... ```
+        if content.startswith("```diff\n") and content.endswith("```"):
+            print(f"[LLM] Stripping markdown fences from diff for {test_name}")
+            content = content[8:-3].strip()
+        else:
+            print(f"[LLM] Unexpected response format for {test_name}:\n{content[:300]}")
+            return ""
 
     return content

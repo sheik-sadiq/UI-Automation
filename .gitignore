@@ -97,3 +97,6 @@ trace.zip
 # Project-specific
 *.log
 report.html
+
+# GitHub Actions Runner
+actions-runner/

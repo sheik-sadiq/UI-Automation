@@ -158,31 +158,53 @@ def main(report_path: str) -> None:
 
     print(f"[HEAL] Found {len(failures)} failure(s) to process.")
 
+    # ── Deduplicate: group failures by page file ──────────────────────────────
+    # Multiple failing tests on the same page file = 1 LLM call, not N.
+    # This cuts API quota usage proportionally.
+    from collections import defaultdict
+    by_page: dict = defaultdict(list)
+    for t in failures:
+        by_page[t.page_file].append(t)
+
+    unique_pages = list(by_page.keys())
+    print(f"[HEAL] Deduplicated to {len(unique_pages)} unique page file(s): "
+          f"{', '.join(unique_pages)}")
+
     patched: list = []
     fix_summary: list = []
 
-    for test in failures:
-        print(f"\n[HEAL] ── Processing: {test.name}")
-        print(f"[HEAL]    Page file : {test.page_file}")
-        print(f"[HEAL]    Snapshot  : {test.page_url}")
+    for page_file, tests in by_page.items():
+        page_url    = tests[0].page_url
+        test_names  = ", ".join(t.name for t in tests)
+        # Combine all tracebacks for this page into one prompt
+        combined_tb = "\n\n---\n\n".join(
+            f"Test: {t.name}\n{t.traceback}" for t in tests
+        )
 
-        snapshot    = capture_dom_snapshot(test.page_url)   # YAML str
-        page_source = Path(test.page_file).read_text()
-        diff        = ask_llm(test.name, test.traceback, page_source, snapshot)
+        print(f"\n[HEAL] ── Page file : {page_file}")
+        print(f"[HEAL]    Tests     : {test_names}")
+        print(f"[HEAL]    Snapshot  : {page_url}")
+
+        snapshot    = capture_dom_snapshot(page_url)
+        page_source = Path(page_file).read_text()
+        # Use first test name for logging; pass all tracebacks
+        diff = ask_llm(tests[0].name, combined_tb, page_source, snapshot)
 
         if not diff:
-            print(f"[HEAL] ⚠️  No usable diff from LLM for {test.name}")
+            print(f"[HEAL] ⚠️  No usable diff from LLM for {page_file}")
             continue
 
         if not _validate_patch(diff):
             continue
 
-        if _apply_patch(diff, test.page_file):
-            patched.append(test)
-            fix_summary.append(f"- `{test.name}` → healed `{test.page_file}`")
-            print(f"[HEAL] ✅ Patched: {test.page_file}")
+        if _apply_patch(diff, page_file):
+            patched.extend(tests)
+            fix_summary.append(
+                f"- `{page_file}` — fixed tests: {test_names}"
+            )
+            print(f"[HEAL] ✅ Patched: {page_file}")
         else:
-            print(f"[HEAL] ❌ Patch failed for {test.name}")
+            print(f"[HEAL] ❌ Patch failed for {page_file}")
 
     # ── Escalate if nothing was patched ──────────────────────────────────────
     if not patched:
@@ -195,6 +217,7 @@ def main(report_path: str) -> None:
             ),
         )
         sys.exit(1)
+
 
     # ── Spot re-run: only the tests we healed ────────────────────────────────
     k_expr = " or ".join(t.name for t in patched)

@@ -64,17 +64,39 @@ def push_and_open_pr(fix_summary: list) -> None:
     print(f"[GIT] PR opened: {branch} → main")
 
 
+ISSUE_LABELS = ["auto-heal", "needs-human"]
+
+
+def _ensure_labels(repo: str) -> None:
+    """Create issue labels if they don't already exist in the repo."""
+    label_defs = {
+        "auto-heal":   ("Bot-generated heal attempt", "e11d48"),  # red-ish
+        "needs-human": ("Requires human investigation", "f97316"), # orange
+    }
+    for name, (desc, colour) in label_defs.items():
+        subprocess.run(
+            ["gh", "label", "create", name,
+             "--repo",        repo,
+             "--description", desc,
+             "--color",       colour,
+             "--force"],       # --force = update if already exists, no error
+            check=False,       # never crash if this fails
+            capture_output=True,
+        )
+
+
 def open_github_issue(title: str, body: str) -> None:
     """
     Open a GitHub Issue to escalate when the heal bot cannot fix failures.
-    Labels the issue with 'auto-heal' and 'needs-human' for easy filtering.
+    Labels are created automatically if they don't exist yet.
     """
     repo = os.environ["GITHUB_REPOSITORY"]
+    _ensure_labels(repo)
     _run([
         "gh", "issue", "create",
         "--repo",  repo,
         "--title", title,
         "--body",  body,
-        "--label", "auto-heal,needs-human",
+        "--label", ",".join(ISSUE_LABELS),
     ])
     print(f"[GIT] Issue opened: {title}")
