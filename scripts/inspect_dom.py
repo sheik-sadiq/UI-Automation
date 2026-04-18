@@ -15,20 +15,19 @@ from playwright.sync_api import sync_playwright
 
 def capture_dom_snapshot(url: str) -> str:
     """
-    Navigate to `url` headlessly and return a YAML-formatted ARIA
-    accessibility snapshot of the live page.
+    Navigate to `url` headlessly and return the full page HTML.
 
-    Uses page.aria_snapshot() — the modern Playwright API (1.44+).
-    The snapshot is passed to the LLM so it can identify the current
-    role/name/text of elements whose locators have broken.
+    Uses page.content() — available in every Playwright version, no
+    API-version constraints. The HTML is passed to the LLM so it can
+    identify the current role/name/text of elements whose locators broke.
     """
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         page.goto(url, wait_until="networkidle", timeout=30_000)
-        snapshot = page.aria_snapshot()   # returns a YAML string
+        html = page.content()    # full rendered HTML — universally available
         browser.close()
-    return snapshot or ""
+    return html or ""
 
 
 # ── Manual inspection block (unchanged) ──────────────────────────────────────

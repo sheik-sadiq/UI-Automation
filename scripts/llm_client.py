@@ -77,8 +77,8 @@ def ask_llm(
 {page_source}
 ```
 
-## Live DOM Snapshot (ARIA accessibility tree — YAML)
-```yaml
+## Live Page HTML (rendered DOM — find the current element text/role here)
+```html
 {dom_snapshot}
 ```
 
