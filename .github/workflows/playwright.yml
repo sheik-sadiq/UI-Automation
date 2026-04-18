@@ -67,21 +67,13 @@ jobs:
           token: ${{ secrets.BOT_GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        env:
-          RUNNER_TOOL_CACHE: ${{ github.workspace }}/../_tool_cache
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install dependencies
+      - name: Set up Python venv (Self-hosted)
         run: |
-          python -m pip install --upgrade pip
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
           pip install -r requirements.txt
-
-      - name: Install Playwright browsers
-        run: playwright install --with-deps chromium
+          python -m playwright install chromium
 
       - name: Download test report
         uses: actions/download-artifact@v4
@@ -97,4 +89,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: python -m scripts.heal_runner --report report.json
+        run: |
+          source venv/bin/activate
+          python -m scripts.heal_runner --report report.json
