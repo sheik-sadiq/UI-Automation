@@ -166,7 +166,7 @@ def main(report_path: str) -> None:
         print(f"[HEAL]    Page file : {test.page_file}")
         print(f"[HEAL]    Snapshot  : {test.page_url}")
 
-        snapshot    = capture_dom_snapshot(test.page_url)
+        snapshot    = capture_dom_snapshot(test.page_url)   # YAML str
         page_source = Path(test.page_file).read_text()
         diff        = ask_llm(test.name, test.traceback, page_source, snapshot)
 

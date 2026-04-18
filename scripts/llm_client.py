@@ -1,20 +1,21 @@
 """
 llm_client.py
 =============
-Wraps the Google Gemini API (google-generativeai SDK).
+Wraps the Google Gemini API using the current `google-genai` SDK
+(package: google-genai, import: google.genai).
 
 The HEAL_SYSTEM_PROMPT encodes the locator-fix rules from
-.github/skills/auto-heal.md so Gemini understands exactly what to produce:
+.github/skills/auto-heal.md so Gemini knows exactly what to produce:
 a valid unified diff targeting only pages/, using Playwright's preferred
 locator hierarchy.
 
 Returns a unified diff string ready to pipe into `patch -p1`, or an empty
 string if Gemini signals it cannot fix the failure.
 """
-import json
 import os
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 # ── System instruction (distilled from .github/skills/auto-heal.md) ──────────
 HEAL_SYSTEM_PROMPT = """
@@ -31,6 +32,9 @@ Rules:
     4. locator(css_selector)  — only as last resort
 - Output ONLY a valid unified diff (diff -u format), nothing else —
   no explanation, no code fences, no markdown
+- The diff header lines must follow the exact format:
+    --- a/pages/filename.py
+    +++ b/pages/filename.py
 - Add a heal comment directly above the fixed locator line:
     # Healed YYYY-MM-DD: <one-line reason>
 - If you are not confident in the fix, respond with exactly: CANNOT_FIX
@@ -41,29 +45,24 @@ def ask_llm(
     test_name: str,
     traceback: str,
     page_source: str,
-    dom_snapshot: dict,
+    dom_snapshot: str,
 ) -> str:
     """
-    Call Gemini with the test failure context and a live DOM snapshot.
+    Call Gemini 2.0 Flash with test failure context and live DOM snapshot.
 
     Parameters
     ----------
     test_name   : Name of the pytest function that failed.
     traceback   : Full error traceback from pytest-json-report.
     page_source : Current source of the responsible pages/*.py file.
-    dom_snapshot: ARIA accessibility tree captured from the live page.
+    dom_snapshot: ARIA accessibility tree (YAML string) from page.aria_snapshot().
 
     Returns
     -------
     A unified diff string suitable for ``patch -p1``, or empty string
     on failure / low confidence.
     """
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-
-    model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash",
-        system_instruction=HEAL_SYSTEM_PROMPT,
-    )
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
     user_message = f"""## Failing Test
 `{test_name}`
@@ -78,19 +77,21 @@ def ask_llm(
 {page_source}
 ```
 
-## Live DOM Snapshot (ARIA accessibility tree)
-```json
-{json.dumps(dom_snapshot, indent=2)}
+## Live DOM Snapshot (ARIA accessibility tree — YAML)
+```yaml
+{dom_snapshot}
 ```
 
 Produce a unified diff that fixes the broken locator.
-Remember: output ONLY the diff, no markdown fences, no explanation.
+Remember: output ONLY the raw diff, no markdown fences, no explanation.
 """
 
-    response = model.generate_content(
-        user_message,
-        generation_config=genai.GenerationConfig(
-            temperature=0.1,        # low temp → deterministic output
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=user_message,
+        config=types.GenerateContentConfig(
+            system_instruction=HEAL_SYSTEM_PROMPT,
+            temperature=0.1,        # low temp → deterministic, minimal hallucination
             max_output_tokens=1000,
         ),
     )
@@ -102,7 +103,7 @@ Remember: output ONLY the diff, no markdown fences, no explanation.
         print(f"[LLM] Gemini signalled CANNOT_FIX for {test_name}")
         return ""
     if not content.startswith("---"):
-        print(f"[LLM] Unexpected response format for {test_name}:\n{content[:200]}")
+        print(f"[LLM] Unexpected response format for {test_name}:\n{content[:300]}")
         return ""
 
     return content
