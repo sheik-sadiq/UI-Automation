@@ -16,9 +16,17 @@ import subprocess
 from datetime import date
 
 
-def _run(cmd: list, **kwargs) -> subprocess.CompletedProcess:
-    """Run a shell command, raise on non-zero exit."""
-    return subprocess.run(cmd, check=True, **kwargs)
+def _run(cmd: list, check: bool = True, **kwargs) -> subprocess.CompletedProcess:
+    """Run a shell command, gracefully handling missing binaries."""
+    import shutil
+    if cmd[0] == "gh" and not shutil.which("gh"):
+        print(f"[GIT] ⚠️ Skipping GitHub CLI operation — 'gh' not found in PATH.")
+        return subprocess.CompletedProcess(cmd, 0)
+    try:
+        return subprocess.run(cmd, check=check, **kwargs)
+    except subprocess.CalledProcessError as exc:
+        print(f"[GIT] Command failed: {' '.join(cmd)}\n{exc.stderr}")
+        raise
 
 
 def push_and_open_pr(fix_summary: list) -> None:

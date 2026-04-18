@@ -126,14 +126,18 @@ def _apply_patch(diff: str, page_file: str) -> bool:
     Apply the unified diff with `patch -p1`, then syntax-check the
     modified Python file. Reverts the file on syntax error.
     """
+    print(f"\n[DEBUG] Raw LLM Diff:\n{diff}\n")
     try:
+        # Pass the exact filename to patch so it doesn't get confused by bad --- headers
         subprocess.run(
-            ["patch", "-p1", "--forward", "--batch"],
+            ["patch", page_file, "--forward", "--batch"],
             input=diff, text=True, check=True,
             capture_output=True,
         )
     except subprocess.CalledProcessError as exc:
-        print(f"[HEAL] patch failed:\n{exc.stderr}")
+        print(f"[HEAL] patch failed (exit {exc.returncode}):")
+        print(f"STDOUT:\n{exc.stdout}")
+        print(f"STDERR:\n{exc.stderr}")
         return False
 
     # Syntax check
