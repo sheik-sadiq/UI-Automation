@@ -69,6 +69,8 @@ jobs:
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
+        env:
+          RUNNER_TOOL_CACHE: ${{ github.workspace }}/../_tool_cache
         with:
           python-version: '3.12'
           cache: 'pip'
