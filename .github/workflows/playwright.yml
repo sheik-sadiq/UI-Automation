@@ -96,4 +96,4 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GH_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: python scripts/heal_runner.py --report report.json
+        run: python -m scripts.heal_runner --report report.json
