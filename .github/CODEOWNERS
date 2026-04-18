@@ -1,0 +1,6 @@
+# CODEOWNERS — enforces review gate on bot PRs
+#
+# Any change to pages/ (the only path the auto-heal bot touches)
+# requires explicit approval from the repo owner before merging.
+# This ensures a human reviews every AI-generated locator fix.
+/pages/  @sheik-sadiq
