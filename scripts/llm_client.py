@@ -13,6 +13,7 @@ Returns a unified diff string ready to pipe into `patch -p1`, or an empty
 string if Gemini signals it cannot fix the failure.
 """
 import os
+import time
 
 from google import genai
 from google.genai import types
@@ -77,8 +78,8 @@ def ask_llm(
 {page_source}
 ```
 
-## Live Page HTML (rendered DOM — find the current element text/role here)
-```html
+## Live Page Elements (interactive links, buttons, headings — JSON)
+```json
 {dom_snapshot}
 ```
 
@@ -86,15 +87,32 @@ Produce a unified diff that fixes the broken locator.
 Remember: output ONLY the raw diff, no markdown fences, no explanation.
 """
 
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=user_message,
-        config=types.GenerateContentConfig(
-            system_instruction=HEAL_SYSTEM_PROMPT,
-            temperature=0.1,        # low temp → deterministic, minimal hallucination
-            max_output_tokens=1000,
-        ),
-    )
+    MAX_RETRIES = 3
+    BACKOFF     = [2, 4, 8]   # seconds between retries
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=user_message,
+                config=types.GenerateContentConfig(
+                    system_instruction=HEAL_SYSTEM_PROMPT,
+                    temperature=0.1,
+                    max_output_tokens=1000,
+                ),
+            )
+            break   # success — exit retry loop
+        except Exception as exc:
+            err = str(exc)
+            if "429" in err or "quota" in err.lower() or "rate" in err.lower():
+                if attempt < MAX_RETRIES - 1:
+                    wait = BACKOFF[attempt]
+                    print(f"[LLM] 429 rate-limit hit — retrying in {wait}s (attempt {attempt + 1}/{MAX_RETRIES})")
+                    time.sleep(wait)
+                    continue
+            # Non-retriable error or exhausted retries
+            print(f"[LLM] API error for {test_name}: {exc}")
+            return ""
 
     content = response.text.strip()
 

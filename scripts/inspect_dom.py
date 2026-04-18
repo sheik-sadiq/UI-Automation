@@ -15,19 +15,41 @@ from playwright.sync_api import sync_playwright
 
 def capture_dom_snapshot(url: str) -> str:
     """
-    Navigate to `url` headlessly and return the full page HTML.
+    Navigate to `url` headlessly and return a compact JSON snapshot of all
+    interactive elements (links, buttons, headings) on the page.
 
-    Uses page.content() — available in every Playwright version, no
-    API-version constraints. The HTML is passed to the LLM so it can
-    identify the current role/name/text of elements whose locators broke.
+    Why NOT page.content():  returns full React HTML (500KB+) → token quota
+                              exhausted on Gemini free tier for a single call.
+    Why this approach:        page.evaluate() lets us cherry-pick only the
+                              elements Playwright locators reference, giving
+                              Gemini a <5KB payload with exactly what it needs.
+    """
+    EXTRACT_SCRIPT = """
+    () => {
+        const seen = new Set();
+        const els  = [];
+        const sel  = 'a, button, h1, h2, h3, h4, [role="button"], [role="link"], [role="heading"]';
+        document.querySelectorAll(sel).forEach(el => {
+            const text      = (el.innerText || el.textContent || '').trim().slice(0, 120);
+            const ariaLabel = el.getAttribute('aria-label') || '';
+            const role      = el.getAttribute('role') || el.tagName.toLowerCase();
+            const href      = el.getAttribute('href') || '';
+            const key       = role + '|' + text + '|' + ariaLabel;
+            if ((text || ariaLabel) && !seen.has(key)) {
+                seen.add(key);
+                els.push({ tag: el.tagName, role, text, ariaLabel, href });
+            }
+        });
+        return JSON.stringify(els, null, 2);
+    }
     """
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        page    = browser.new_page()
         page.goto(url, wait_until="networkidle", timeout=30_000)
-        html = page.content()    # full rendered HTML — universally available
+        snapshot = page.evaluate(EXTRACT_SCRIPT)
         browser.close()
-    return html or ""
+    return snapshot or "[]"
 
 
 # ── Manual inspection block (unchanged) ──────────────────────────────────────
