@@ -17,8 +17,9 @@ class HomePage(BasePage):
         )
 
         # --- Home page CTAs ---
+        # ⚠️  DELIBERATELY BROKEN for auto-heal validation (fake UI rename)
         self.schedule_discovery_call: Locator = page.get_by_role(
-            "link", name="Schedule Discovery Call", exact=True
+            "link", name="Book Discovery Session", exact=True
         )
 
     def open(self) -> "HomePage":

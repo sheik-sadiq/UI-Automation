@@ -1,26 +1,29 @@
-name: Playwright Tests
+name: Playwright Tests + Auto-Heal
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
+  schedule:
+    - cron: '0 2 * * *'       # nightly at 02:00 UTC
+  workflow_dispatch:           # manual trigger from Actions UI
 
 jobs:
+  # ── Job 1: Run the full test suite ──────────────────────────────────────────
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.11', '3.12']
     timeout-minutes: 15
+    outputs:
+      exit_code: ${{ steps.run_tests.outputs.exit_code }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: '3.12'
           cache: 'pip'
 
       - name: Install dependencies
@@ -28,16 +31,64 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install Playwright browsers and OS dependencies
+      - name: Install Playwright browsers
         run: playwright install --with-deps chromium
 
-      - name: Run tests
-        run: pytest tests/ -v --tb=short
+      - id: run_tests
+        name: Run tests
+        run: |
+          set +e
+          pytest tests/ -v --tb=short \
+            --json-report --json-report-file=report.json
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
 
-      - name: Upload test results
+      - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-results-py${{ matrix.python-version }}
-          path: test-results/
-          if-no-files-found: ignore
+          name: test-report
+          path: report.json
+          if-no-files-found: warn
+
+  # ── Job 2: AI self-healer (only fires when tests fail) ──────────────────────
+  auto_heal:
+    needs: test
+    if: needs.test.outputs.exit_code != '0'
+    runs-on: self-hosted       # needs Ollama on localhost:11434
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.BOT_GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up Python venv (Self-hosted)
+        run: |
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m playwright install chromium
+
+      - name: Download test report
+        uses: actions/download-artifact@v4
+        with:
+          name: test-report
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "auto-heal-bot"
+          git config user.email "auto-heal-bot@users.noreply.github.com"
+
+      - name: Run AI Healer
+        env:
+          GH_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          source venv/bin/activate
+          python -m scripts.heal_runner --report report.json

@@ -17,7 +17,8 @@ class BasePage:
         self.nav_about_us: Locator = self._header.get_by_role("button", name="About Us", exact=True).first
 
         # --- Global action buttons (header area) ---
-        self.community_button: Locator = page.get_by_role("link", name="Community", exact=True)
+        # ⚠️  DELIBERATELY BROKEN for auto-heal validation (fake button rename)
+        self.community_button: Locator = page.get_by_role("link", name="Join Community", exact=True)
         self.contact_us_button: Locator = self._header.get_by_role("link", name="Contact Us", exact=True).first
 
         # --- Footer "Contact Us" (inside the "Ready to Transform" CTA section) ---
