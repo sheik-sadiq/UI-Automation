@@ -128,7 +128,7 @@ def _apply_patch(diff: str, page_file: str) -> bool:
     """
     try:
         subprocess.run(
-            ["patch", "-p1", "--forward"],
+            ["patch", "-p1", "--forward", "--batch"],
             input=diff, text=True, check=True,
             capture_output=True,
         )
