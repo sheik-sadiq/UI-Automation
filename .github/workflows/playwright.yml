@@ -54,7 +54,7 @@ jobs:
   auto_heal:
     needs: test
     if: needs.test.outputs.exit_code != '0'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted       # needs Ollama on localhost:11434
     timeout-minutes: 20
     permissions:
       contents: write
@@ -93,7 +93,6 @@ jobs:
 
       - name: Run AI Healer
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GH_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: python -m scripts.heal_runner --report report.json
